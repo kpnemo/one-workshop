@@ -38,12 +38,47 @@ Your workflow:
 2. Search for the topic across all pages to understand what's available
 3. If the initial pages lack detail, use extract_links to find relevant sub-pages, then follow_link to fetch them
 4. Extract structured data from pages that have relevant content
-5. Organize findings into a clean, well-structured JSON object
+5. Organize findings into items conforming to the output schema below
 6. Call submit_result with your final JSON
 
 IMPORTANT: Be efficient. Don't follow more than 3 links. Don't call tools redundantly. Once you have enough data, submit the result promptly.
 
-The JSON structure should be inferred from the content — there is no fixed schema. Choose a structure that best represents the data you found. Use descriptive keys, group related data logically, and include source URLs where helpful.
+Your output MUST conform to this schema exactly:
+{
+  "meta": {
+    "source_urls": ["<all URLs scraped>"],
+    "languages": ["<BCP 47 codes for each page's language, e.g. he, en>"],
+    "topic": "<original topic from user>",
+    "topic_translated": "<translated topic from language alignment, or null if same language>",
+    "scraped_at": "<copy the timestamp from the user message verbatim>"
+  },
+  "items": [
+    {
+      "id": "<slug from headline + source domain, e.g. sinner-wins-iw-sport5>",
+      "category": "<news|event|media|opinion|profile|announcement|other>",
+      "headline": "<original language>",
+      "headline_en": "<English translation, or null if already English>",
+      "summary": "<brief summary in original language, or null>",
+      "summary_en": "<English translation of summary, or null if already English>",
+      "source_url": "<URL where found, or null>",
+      "published_at": "<date as found on site, or null>",
+      "tags": ["<namespace:value format, e.g. event:wimbledon, person:sinner, type:result>"],
+      "sentiment": "<positive|negative|neutral|null>",
+      "entities": [
+        { "name": "<entity name>", "type": "<person|organization|tournament|place|product|other>", "role": "<context role or null>" }
+      ]
+    }
+  ]
+}
+
+Tag namespaces: topic:, person:, org:, event:, type:, country:. Use lowercase slugs. Additional namespaces allowed.
+
+Rules:
+- Create separate items for each piece of content from each source, even if sources cover the same story
+- Always include headline_en and summary_en fields (set to null if source is English, don't omit)
+- For meta.languages, detect the language of each page in your pool and list all unique BCP 47 codes
+- meta.topic_translated comes from your language alignment step
+- meta.scraped_at: copy the "Current time" value from the user message verbatim
 
 Be thorough but focused. Extract only what's relevant to the topic.`;
 
@@ -57,6 +92,7 @@ export async function extractData(
   const pagePool = [...pages];
 
   onStatus({ phase: "agent", state: "started" });
+  console.log(`[agent] Starting extraction: topic="${topic}" pages=${pages.length}`);
 
   const userContent = buildUserMessage(pages, topic);
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: userContent }];
@@ -73,14 +109,21 @@ export async function extractData(
       state: "thinking",
       message: `Turn ${turns}/${MAX_TURNS}...`,
     });
+    console.log(`[agent] Turn ${turns}/${MAX_TURNS}`);
 
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      tools: toolDefinitions as Anthropic.Tool[],
-      messages,
-    });
+    let response: Anthropic.Message;
+    try {
+      response = await client.messages.create({
+        model: MODEL,
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        tools: toolDefinitions as Anthropic.Tool[],
+        messages,
+      });
+    } catch (err) {
+      console.error(`[agent] API error on turn ${turns}:`, err instanceof Error ? err.stack || err.message : err);
+      throw err;
+    }
 
     // Extract any text blocks as agent "thinking"
     for (const block of response.content) {
@@ -156,6 +199,7 @@ export async function extractData(
         summary = summarizeToolResult(toolUse.name, input, toolResult);
       }
 
+      console.log(`[agent] ${toolUse.name}: ${summary}`);
       onStatus({ phase: "agent", state: "tool_result", tool: toolUse.name, summary });
 
       toolResults.push({
@@ -169,11 +213,13 @@ export async function extractData(
     messages.push({ role: "user", content: toolResults });
 
     if (result !== null) {
+      console.log(`[agent] Done in ${turns} turn(s)`);
       onStatus({ phase: "agent", state: "done" });
       return { data: result };
     }
   }
 
+  console.log(`[agent] Exhausted ${MAX_TURNS} turns without result`);
   onStatus({ phase: "agent", state: "done" });
 
   if (result === null) {

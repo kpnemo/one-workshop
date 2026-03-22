@@ -31,7 +31,7 @@ A full-stack web scraping service that takes multiple URLs and a topic as input,
 │  │  (parallel) │    │                       │       │
 │  └─────────────┘    │  Tools:               │       │
 │                     │  - search_content     │       │
-│                     │  - extract_structured  │       │
+│                     │  - extract_structured_data │  │
 │                     │  - classify_relevance  │       │
 │                     │  - submit_result       │       │
 │                     └───────────────────────┘       │
@@ -90,7 +90,9 @@ one-workshop/
 }
 ```
 
-**Response:** SSE stream with the following event types:
+**Response:** HTTP `200` with SSE stream. Note: since this is a POST endpoint, the browser `EventSource` API cannot be used. The client must consume the stream via `fetch` with `ReadableStream` + `TextDecoder` line splitting, or use a library like `eventsource-parser`.
+
+Event types:
 
 ```
 event: status
@@ -114,6 +116,9 @@ data: {"phase": "agent", "state": "tool_result", "tool": "search_content"}
 event: status
 data: {"phase": "agent", "state": "done"}
 
+event: error
+data: {"phase": "agent", "error": "Anthropic API rate limit exceeded"}
+
 event: result
 data: {"success": true, "topic": "soccer", "urls": ["https://espn.com"], "data": {...}, "errors": [{"url": "https://bbc.com/sport", "error": "Navigation timeout"}]}
 ```
@@ -122,7 +127,7 @@ data: {"success": true, "topic": "soccer", "urls": ["https://espn.com"], "data":
 - `urls`: non-empty array, each valid URL format
 - `topic`: non-empty string
 
-**Error (non-SSE, immediate):**
+**Error (non-SSE, immediate — HTTP `400`):**
 ```json
 {
   "success": false,
@@ -166,13 +171,15 @@ data: {"success": true, "topic": "soccer", "urls": ["https://espn.com"], "data":
 - **`extractData(pages: PageContent[], topic: string, onStatus: StatusCallback): Promise<any>`**
 - Creates Anthropic client from `ANTHROPIC_API_KEY` env var
 - System prompt: instructs agent to analyze provided web pages and extract topic-relevant information using available tools, then call `submit_result` with final structured JSON
-- User message: includes all page contents with source URLs
+- User message: includes `text` and `title` per page (not raw HTML) with source URLs. If total text exceeds 100k characters, truncate each page proportionally. The `extract_structured_data` tool accesses `html` on demand for specific pages.
 - Runs agent loop:
   1. Send messages to Claude with tool definitions
   2. If response has tool calls, execute them and append results
   3. Emit status events for each tool call/result
   4. Repeat until `submit_result` is called or max 10 turns reached
-- Returns the JSON passed to `submit_result`
+- If `submit_result` is called, returns its `data` payload
+- If 10 turns elapse without `submit_result`, returns `{ data: null, warning: "Agent did not complete extraction within 10 turns" }` in the result event
+- All fetched page data (html, text, title, url) is held in memory and accessible to tool implementations for the duration of the agent loop
 
 ### Agent Tools (`src/agent/tools.ts`)
 
@@ -235,8 +242,9 @@ data: {"success": true, "topic": "soccer", "urls": ["https://espn.com"], "data":
 ### api.ts
 
 - **`scrape(urls: string[], topic: string, onEvent: EventCallback): Promise<void>`**
-- Uses `fetch` with readable stream to consume SSE from `POST /api/scrape`
-- Parses SSE events, calls `onEvent` for each
+- Uses `fetch` with `ReadableStream` + `TextDecoder` to consume SSE from `POST /api/scrape` (cannot use `EventSource` — POST not supported)
+- Parses SSE text protocol line-by-line (or uses `eventsource-parser` library)
+- Calls `onEvent` for each parsed event
 - Handles connection errors
 
 ### Vite Config

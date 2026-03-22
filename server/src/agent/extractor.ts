@@ -115,7 +115,7 @@ export async function extractData(
     try {
       response = await client.messages.create({
         model: MODEL,
-        max_tokens: 4096,
+        max_tokens: 16384,
         system: SYSTEM_PROMPT,
         tools: toolDefinitions as Anthropic.Tool[],
         messages,
@@ -311,5 +311,5 @@ function buildUserMessage(pages: PageContent[], topic: string): string {
     }
   }
 
-  return `Topic: ${topic}\n\nExtract all information relevant to "${topic}" from the following web pages. Use your tools to search, extract structured data, and classify relevance. If the pages lack detail, use extract_links and follow_link to explore sub-pages. When done, call submit_result with the final structured JSON.\n\n${pageTexts.join("\n\n")}`;
+  return `Topic: ${topic}\nCurrent time: ${new Date().toISOString()}\n\nExtract all information relevant to "${topic}" from the following web pages. Use your tools to search, extract structured data, and classify relevance. If the pages lack detail, use extract_links and follow_link to explore sub-pages. When done, call submit_result with JSON conforming to the output schema.\n\n${pageTexts.join("\n\n")}`;
 }

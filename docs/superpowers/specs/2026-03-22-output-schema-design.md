@@ -25,8 +25,7 @@ Replace the "no fixed schema" instruction with a **generic output schema** hardc
     "languages": ["he"],
     "topic": "tennis",
     "topic_translated": "טניס",
-    "scraped_at": "2026-03-22T16:30:00Z",
-    "item_count": 12
+    "scraped_at": "2026-03-22T16:30:00Z"
   },
   "items": [
     {
@@ -38,7 +37,7 @@ Replace the "no fixed schema" instruction with a **generic output schema** hardc
       "summary_en": "The Italian won in a decisive third set...",
       "source_url": "https://sport5.co.il/article/123",
       "published_at": "2026-03-20",
-      "tags": ["tournament:indian_wells", "player:sinner", "type:result"],
+      "tags": ["event:indian_wells", "person:sinner", "type:result"],
       "sentiment": "neutral",
       "entities": [
         { "name": "Jannik Sinner", "type": "person", "role": "winner" },
@@ -60,19 +59,18 @@ Replace the "no fixed schema" instruction with a **generic output schema** hardc
 | languages | string[] | yes | BCP 47 language tags detected (e.g., ["he", "en"]) |
 | topic | string | yes | Original topic as provided by user |
 | topic_translated | string\|null | yes | Translated topic (null if same language) |
-| scraped_at | string | yes | ISO 8601 timestamp |
-| item_count | number | yes | Total number of items extracted |
+| scraped_at | string | yes | ISO 8601 timestamp — injected server-side via `buildUserMessage`, agent copies it verbatim |
 
 **`items` (required array of objects):**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| id | string | yes | Slug derived from headline + source domain (e.g., "sinner-wins-iw-sport5") |
+| id | string | yes | Best-effort slug derived from headline + source domain (e.g., "sinner-wins-iw-sport5"). Not guaranteed unique — consumers must not rely on uniqueness as a primary key. |
 | category | string | yes | Content type: "news", "event", "media", "opinion", "profile", "announcement", or other |
 | headline | string | yes | Original language headline |
-| headline_en | string\|null | no | English translation (null if already English) |
+| headline_en | string\|null | yes | English translation, or null if source is already English. Always include the field (set to null, don't omit). |
 | summary | string\|null | no | Brief summary in original language |
-| summary_en | string\|null | no | English translation of summary |
+| summary_en | string\|null | yes | English translation of summary, or null if source is already English. Always include the field. |
 | source_url | string\|null | no | URL where this item was found |
 | published_at | string\|null | no | Date string as found on site (ISO 8601 or free-form) |
 | tags | string[] | yes | Controlled vocabulary tags in `namespace:value` format |
@@ -110,6 +108,10 @@ Agent may use additional namespaces as appropriate for the topic.
 | Bilingual | headline_en / summary_en fields | Works with language alignment feature; preserves original + provides English |
 | Deduplication | No dedup — keep all items | Each source produces its own items, even for same story. Simple, no merge logic. |
 | Entities | Inline per-item | Shows who/what in context; avoids cross-referencing between sections |
+| item_count | Dropped from meta | Redundant (derivable from `items.length`); LLMs reliably get computed counts wrong |
+| scraped_at | Server-injected timestamp | Agent has no clock; timestamp injected into user message, agent copies verbatim |
+| id uniqueness | Best-effort, not guaranteed | Agent-generated slugs may collide; consumers must not treat as primary key |
+| max_tokens | Increased to 16384 | Structured output with bilingual fields needs more room than freeform JSON |
 
 ## Changes
 
@@ -136,7 +138,26 @@ Current: "When done, call submit_result with the final structured JSON."
 
 New: "When done, call submit_result with JSON conforming to the output schema."
 
-### 4. No changes to
+Also inject the current timestamp into the user message so the agent can copy it into `meta.scraped_at`:
+```
+Current time: ${new Date().toISOString()}
+```
+
+### 4. Increase `max_tokens` (`server/src/agent/extractor.ts`)
+
+Current: `max_tokens: 4096`
+
+New: `max_tokens: 16384`
+
+The structured schema with bilingual fields and entities produces significantly more tokens per item than freeform JSON. At 4096 tokens, moderate scrapes (12+ items) will be truncated mid-JSON, resulting in corrupted output. 16384 provides comfortable headroom.
+
+### 5. Add per-page language detection instruction to system prompt
+
+The language alignment step (from the previous feature) only detects the first page's language. The `meta.languages` field needs all unique languages. Add an instruction to the system prompt:
+
+"For meta.languages, detect the language of each page in your pool and list all unique BCP 47 codes."
+
+### 6. No changes to
 
 - Tool implementations (`tools.ts` logic) — only the `submit_result` description text changes
 - Types (`types.ts`) — `ScrapeResult.data` remains `Record<string, unknown> | null`
@@ -151,7 +172,7 @@ The schema definition in the system prompt adds approximately 300-400 tokens. Th
 
 | Case | Behavior |
 |------|----------|
-| No content found for topic | `items` is empty array `[]`, `meta.item_count` is 0 |
+| No content found for topic | `items` is empty array `[]` |
 | Single URL, single language | Works normally, `meta.source_urls` has one entry, `meta.languages` has one entry |
 | Multiple URLs, same language | All items tagged with their respective `source_url` |
 | Multiple URLs, mixed languages | Items in their source language with _en translations |

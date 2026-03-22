@@ -401,7 +401,7 @@ describe("extract_structured_data", () => {
 Run: `cd server && npx vitest run tests/tools.test.ts`
 Expected: FAIL — module not found
 
-- [ ] **Step 5: Implement all tool execution functions**
+- [ ] **Step 3: Implement all tool execution functions**
 
 Create `server/src/agent/tools.ts`:
 
@@ -595,7 +595,7 @@ export const toolDefinitions = [
   {
     name: "extract_structured_data",
     description:
-      "Extract structured data (tables, lists, key-value pairs) from a specific page's HTML. Optionally focus on a CSS element name.",
+      "Extract structured data (tables, lists, key-value pairs) from a specific page's HTML. Optionally focus on a specific HTML element name.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -639,12 +639,12 @@ export const toolDefinitions = [
 ];
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cd server && npx vitest run tests/tools.test.ts`
 Expected: All tests PASS
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add server/src/agent/tools.ts server/tests/tools.test.ts

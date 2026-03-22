@@ -44,11 +44,13 @@ scrapeRouter.post("/scrape", async (req: Request, res: Response) => {
   const validation = validateScrapeRequest(req.body);
 
   if (!validation.valid) {
+    console.log(`[scrape] 400 Bad Request: ${validation.error}`);
     res.status(400).json({ success: false, error: validation.error });
     return;
   }
 
   const { urls, topic } = validation;
+  console.log(`[scrape] POST /api/scrape topic="${topic}" urls=${urls.length}`);
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -88,7 +90,9 @@ scrapeRouter.post("/scrape", async (req: Request, res: Response) => {
       throw new Error("unreachable");
     });
 
+    console.log(`[scrape] ${successfulPages.length}/${fetchResults.length} pages fetched, starting extraction`);
     const extraction = await extractData(pages, topic, onStatus);
+    console.log(`[scrape] Extraction complete, data=${extraction.data ? "yes" : "null"} warning=${extraction.warning || "none"}`);
 
     const result: ScrapeResult = {
       success: true,
@@ -102,6 +106,7 @@ scrapeRouter.post("/scrape", async (req: Request, res: Response) => {
     sendSSE(res, { type: "result", data: result });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[scrape] ERROR:`, err instanceof Error ? err.stack || err.message : err);
     sendSSE(res, { type: "error", data: { phase: "agent", error: errorMessage } });
   } finally {
     res.end();

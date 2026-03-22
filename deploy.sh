@@ -125,14 +125,16 @@ git log main..develop --oneline | sed 's/^/    /'
 
 confirm "Merge develop into main and push?"
 
+info "Switching to main..."
 git checkout main
+info "Merging develop → main..."
 git merge develop --no-edit
+info "Pushing main to origin..."
 git push origin main
-git checkout develop
 success "Merged develop → main and pushed"
 
 # ─────────────────────────────────────────────
-# Release Notes
+# Release Notes (still on main)
 # ─────────────────────────────────────────────
 
 echo ""
@@ -140,6 +142,8 @@ echo -ne "  ${BOLD}Generate release notes? [y/N]: ${NC}"
 read -r gen_notes
 
 if [[ "$gen_notes" != "y" && "$gen_notes" != "Y" ]]; then
+  info "Switching back to develop..."
+  git checkout develop
   echo ""
   success "Production deploy complete (no release notes)"
   echo ""
@@ -252,15 +256,20 @@ echo -e "  ${BOLD}Preview:${NC}"
 echo "$notes_content" | sed 's/^/  │ /'
 echo ""
 
-# Commit release notes
+# Commit release notes on main
+info "Committing release notes on main..."
 git add RELEASE_NOTES.md
 git commit -m "docs: add release notes for ${TODAY}"
+info "Pushing main with release notes..."
 git push origin main
+success "Release notes committed and pushed to main"
 
-# Also update develop with the release notes commit
+# Sync release notes back to develop
+info "Switching to develop..."
 git checkout develop
+info "Merging main → develop (sync release notes)..."
 git merge main --no-edit
+info "Pushing develop..."
 git push origin develop
-
-success "Release notes committed and pushed to both main and develop"
+success "Release notes synced to develop"
 echo ""

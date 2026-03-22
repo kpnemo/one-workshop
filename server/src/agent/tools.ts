@@ -285,13 +285,13 @@ export const toolDefinitions = [
   {
     name: "submit_result",
     description:
-      "Submit the final structured JSON result. Call this when you have finished extracting and organizing all topic-relevant data. This ends the extraction process.",
+      "Submit the final JSON result conforming to the required output schema (meta + items array). Call this when you have finished extracting and organizing all topic-relevant data. This ends the extraction process.",
     input_schema: {
       type: "object" as const,
       properties: {
         data: {
           type: "object",
-          description: "The final structured JSON containing all extracted topic-relevant data",
+          description: "The final JSON object with 'meta' and 'items' fields conforming to the output schema",
         },
       },
       required: ["data"],

@@ -5,6 +5,25 @@ import { JsonViewer } from "./components/JsonViewer";
 import { scrape } from "./lib/api";
 import type { AppStatus, LogEntry, ScrapeResult, SSEEvent, StatusEvent } from "./lib/types";
 
+function formatToolInput(tool: string, input: Record<string, unknown>): string {
+  switch (tool) {
+    case "search_content":
+      return `"${input.query}"${input.url ? ` in ${input.url}` : ""}`;
+    case "extract_structured_data":
+      return `${input.url}${input.elementName ? ` [${input.elementName}]` : ""}`;
+    case "classify_relevance":
+      return `topic="${input.topic}", text="${String(input.text).slice(0, 60)}..."`;
+    case "extract_links":
+      return `${input.url}${input.query ? ` filter="${input.query}"` : ""}`;
+    case "follow_link":
+      return `${input.url}`;
+    case "submit_result":
+      return "final JSON";
+    default:
+      return JSON.stringify(input).slice(0, 80);
+  }
+}
+
 function statusEventToLogEntry(event: StatusEvent): LogEntry {
   const timestamp = new Date();
 
@@ -23,14 +42,18 @@ function statusEventToLogEntry(event: StatusEvent): LogEntry {
     switch (event.state) {
       case "started":
         return { timestamp, type: "agent", message: "Starting AI extraction..." };
-      case "tool_call":
+      case "thinking":
+        return { timestamp, type: "info", message: `Agent: ${event.message}` };
+      case "tool_call": {
+        const inputSummary = formatToolInput(event.tool, event.input);
         return {
           timestamp,
           type: "agent",
-          message: `Agent calling ${event.tool}`,
+          message: `Calling ${event.tool}(${inputSummary})`,
         };
+      }
       case "tool_result":
-        return { timestamp, type: "agent", message: `Agent received ${event.tool} result` };
+        return { timestamp, type: "success", message: `${event.tool} => ${event.summary}` };
       case "done":
         return { timestamp, type: "success", message: "Extraction complete" };
     }

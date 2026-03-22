@@ -35,7 +35,7 @@ async function fetchSinglePage(
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
-    await page.goto(url, { waitUntil: "networkidle", timeout: FETCH_TIMEOUT });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: FETCH_TIMEOUT });
     const html = await page.content();
     const text = await page.evaluate(() => document.body.innerText);
     const title = await page.title();

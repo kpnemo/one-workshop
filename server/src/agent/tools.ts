@@ -167,6 +167,48 @@ export function executeClassifyRelevance(
   return { relevance, score: matchCount, reason };
 }
 
+// --- Extract links from HTML ---
+
+export function executeExtractLinks(
+  pages: PageContent[],
+  input: { url: string; query?: string }
+): Array<{ href: string; text: string }> {
+  const page = pages.find((p) => p.url === input.url);
+  if (!page) return [];
+
+  const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const links: Array<{ href: string; text: string }> = [];
+  let match;
+
+  while ((match = linkRegex.exec(page.html)) !== null) {
+    let href = match[1];
+    const text = match[2].replace(/<[^>]*>/g, "").trim();
+    if (!text || href.startsWith("#") || href.startsWith("javascript:")) continue;
+
+    // Resolve relative URLs
+    try {
+      href = new URL(href, page.url).toString();
+    } catch {
+      continue;
+    }
+
+    if (input.query) {
+      const q = input.query.toLowerCase();
+      if (!text.toLowerCase().includes(q) && !href.toLowerCase().includes(q)) continue;
+    }
+
+    links.push({ href, text });
+  }
+
+  // Deduplicate by href
+  const seen = new Set<string>();
+  return links.filter((l) => {
+    if (seen.has(l.href)) return false;
+    seen.add(l.href);
+    return true;
+  });
+}
+
 // --- Anthropic tool definitions (for API registration) ---
 
 export const toolDefinitions = [
@@ -210,6 +252,34 @@ export const toolDefinitions = [
         topic: { type: "string", description: "The topic to check relevance against" },
       },
       required: ["text", "topic"],
+    },
+  },
+  {
+    name: "extract_links",
+    description:
+      "Extract all links from a page's HTML. Optionally filter by a search query to find links related to a specific topic. Use this to discover sub-pages worth following.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        url: { type: "string", description: "The URL of the page to extract links from" },
+        query: {
+          type: "string",
+          description: "Optional: filter links whose text or href contains this query",
+        },
+      },
+      required: ["url"],
+    },
+  },
+  {
+    name: "follow_link",
+    description:
+      "Navigate to a new URL and fetch its content. Use this when the initial pages don't have enough information about the topic, and you found a promising link via extract_links. The new page content becomes available to all other tools.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        url: { type: "string", description: "The URL to fetch and add to the page pool" },
+      },
+      required: ["url"],
     },
   },
   {

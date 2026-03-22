@@ -4,7 +4,8 @@ export type StatusEvent =
   | { phase: "fetching"; url: string; state: "failed"; error: string }
   | { phase: "agent"; state: "started" }
   | { phase: "agent"; state: "tool_call"; tool: string; input: Record<string, unknown> }
-  | { phase: "agent"; state: "tool_result"; tool: string }
+  | { phase: "agent"; state: "tool_result"; tool: string; summary: string }
+  | { phase: "agent"; state: "thinking"; message: string }
   | { phase: "agent"; state: "done" };
 
 export type SSEEvent =
